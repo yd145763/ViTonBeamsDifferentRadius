@@ -28,11 +28,13 @@ num_head_list = []
 num_trans_list = []
 mlp_size_list = []
 accuracy_list = []
+training_accuracy_list = []
+validation_accuracy_list = []
 training_loss_list = []
 validation_loss_list = []
 time_list = []
 confusion_matrix_list = []
-
+parameter_list = []
 
 from keras.layers import Convolution2D, MaxPooling2D, Flatten, Dense, BatchNormalization, Dropout
 from keras.models import Sequential
@@ -44,26 +46,26 @@ SIZE = 64
     
     
     
-image_directory = 'C:\\Users\\limyu\\Google Drive\\CNNBeamProfiles\\MixedPitchDifferentRadius\\'
+image_directory = '/home/grouptan/Documents/yudian/CNNBeamProfiles/MixedPitchDifferentRadius/'
 dataset = []  #Many ways to handle data, you can use pandas. Here, we are using a list format.  
 label = []  #Place holders to define add labels. We will add 0 to all parasitized images and 1 to uninfected.
 
-reactive_images = os.listdir(image_directory + 'reactive_focused\\')
+reactive_images = os.listdir(image_directory + 'reactive_focused/')
 for i, image_name in enumerate(reactive_images):    #Remember enumerate method adds a counter and returns the enumerate object
     
     if (image_name.split('.')[2] == 'png'):
-        image = cv2.imread(image_directory + 'reactive_focused\\' + image_name)
+        image = cv2.imread(image_directory + 'reactive_focused/' + image_name)
         print(image_name)
         image = Image.fromarray(image, 'RGB')
         image = image.resize((SIZE, SIZE))
         dataset.append(np.array(image))
         label.append(0)
 
-nearfield_images = os.listdir(image_directory + 'nearfield_focused\\')
+nearfield_images = os.listdir(image_directory + 'nearfield_focused/')
 for i, image_name in enumerate(nearfield_images):    #Remember enumerate method adds a counter and returns the enumerate object
     
     if (image_name.split('.')[2] == 'png'):
-        image = cv2.imread(image_directory + 'nearfield_focused\\' + image_name)
+        image = cv2.imread(image_directory + 'nearfield_focused/' + image_name)
         print(image_name)
         image = Image.fromarray(image, 'RGB')
         image = image.resize((SIZE, SIZE))
@@ -73,32 +75,32 @@ for i, image_name in enumerate(nearfield_images):    #Remember enumerate method 
 #Iterate through all images in Uninfected folder, resize to 64 x 64
 #Then save into the same numpy array 'dataset' but with label 1
 
-farfield_images = os.listdir(image_directory + 'farfield_focused\\')
+farfield_images = os.listdir(image_directory + 'farfield_focused/')
 for i, image_name in enumerate(farfield_images):
     if (image_name.split('.')[2] == 'png'):
-        image = cv2.imread(image_directory + 'farfield_focused\\' + image_name)
+        image = cv2.imread(image_directory + 'farfield_focused/' + image_name)
         print(image_name)
         image = Image.fromarray(image, 'RGB')
         image = image.resize((SIZE, SIZE))
         dataset.append(np.array(image))
         label.append(2)
 
-sparsed_reactive_images = os.listdir(image_directory + 'reactive_sparsed\\')
+sparsed_reactive_images = os.listdir(image_directory + 'reactive_sparsed/')
 for i, image_name in enumerate(sparsed_reactive_images):    #Remember enumerate method adds a counter and returns the enumerate object
     
     if (image_name.split('.')[2] == 'png'):
-        image = cv2.imread(image_directory + 'reactive_sparsed\\' + image_name)
+        image = cv2.imread(image_directory + 'reactive_sparsed/' + image_name)
         print(image_name)
         image = Image.fromarray(image, 'RGB')
         image = image.resize((SIZE, SIZE))
         dataset.append(np.array(image))
         label.append(3)
 
-sparsed_nearfield_images = os.listdir(image_directory + 'nearfield_sparsed\\')
+sparsed_nearfield_images = os.listdir(image_directory + 'nearfield_sparsed/')
 for i, image_name in enumerate(sparsed_nearfield_images):    #Remember enumerate method adds a counter and returns the enumerate object
     
     if (image_name.split('.')[2] == 'png'):
-        image = cv2.imread(image_directory + 'nearfield_sparsed\\' + image_name)
+        image = cv2.imread(image_directory + 'nearfield_sparsed/' + image_name)
         print(image_name)
         image = Image.fromarray(image, 'RGB')
         image = image.resize((SIZE, SIZE))
@@ -108,10 +110,10 @@ for i, image_name in enumerate(sparsed_nearfield_images):    #Remember enumerate
 #Iterate through all images in Uninfected folder, resize to 64 x 64
 #Then save into the same numpy array 'dataset' but with label 1
 
-sparsed_farfield_images = os.listdir(image_directory + 'farfield_sparsed\\')
+sparsed_farfield_images = os.listdir(image_directory + 'farfield_sparsed/')
 for i, image_name in enumerate(sparsed_farfield_images):
     if (image_name.split('.')[2] == 'png'):
-        image = cv2.imread(image_directory + 'farfield_sparsed\\' + image_name)
+        image = cv2.imread(image_directory + 'farfield_sparsed/' + image_name)
         print(image_name)
         image = Image.fromarray(image, 'RGB')
         image = image.resize((SIZE, SIZE))
@@ -152,7 +154,6 @@ import os
 import time
 import random
 from PIL import Image
-import tensorflow_datasets as tfds
 import matplotlib.cm as cm
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Layer
@@ -241,19 +242,52 @@ class ViT(Model):
 from sklearn.model_selection import train_test_split
 from keras.utils import to_categorical
 
-
+"""
 # Define the EarlyStopping callback
 early_stopping_callback = EarlyStopping(
-    monitor='val_loss',  # Monitor training loss
+    monitor='loss',  # Monitor training loss
     min_delta=0,  # Minimum change to qualify as an improvement
-    patience=30,  # Number of epochs with no improvement after which training will be stopped
+    patience=10,  # Number of epochs with no improvement after which training will be stopped
     verbose=1,  # Verbosity mode
     mode='min',  # Minimize the monitored quantity
     restore_best_weights=True  # Whether to restore model weights to the best observed during training
 )
+"""
 
+# Custom Callback to save the model with the lowest difference between training loss and validation loss
+class SaveBestWeights(Callback):
+    def __init__(self, monitor='val_loss', patience=30, verbose=1):
+        super(SaveBestWeights, self).__init__()
+        self.monitor = monitor
+        self.patience = patience
+        self.verbose = verbose
+        self.best_diff = np.inf
+        self.best_epoch = None
+        self.best_weights = None
+        self.wait = 0
 
+    def on_epoch_end(self, epoch, logs=None):
+        current_val_loss = logs.get(self.monitor)
+        if current_val_loss is None:
+            print(f"Cannot monitor {self.monitor}")
+            return
 
+        train_loss = logs.get('loss')
+        diff = abs(train_loss - current_val_loss)
+        if diff < self.best_diff:
+            self.best_diff = diff
+            self.best_epoch = epoch
+            if self.verbose > 0:
+                print(f"Epoch {epoch}: Found new best difference ({self.best_diff})")
+            self.best_weights = self.model.get_weights()
+            self.wait = 0
+        else:
+            self.wait += 1
+            if self.wait >= self.patience:
+                if self.verbose > 0:
+                    print(f"No improvement in {self.monitor} for {self.patience} epochs. Restoring model to epoch {self.best_epoch} with lowest difference ({self.best_diff})")
+                self.model.stop_training = True
+                self.model.set_weights(self.best_weights)
 
 N_HEADSS = 1,2,3,4
 N_LAYERSS = 1,2,3,4
@@ -274,6 +308,10 @@ for N_HEADS in N_HEADSS:
             vit(tf.zeros([2,CONFIGURATION["PATCH_SIZE"]**2,CONFIGURATION["PATCH_SIZE"]**2,3]))
             
             vit.summary()
+            
+            total_params_model = sum(tf.size(p).numpy() for p in vit.trainable_variables)
+            parameter_list.append(total_params_model)
+
             vit.compile(optimizer = 'adam', loss = 'categorical_crossentropy', metrics = ['accuracy'])
             
             #loss_function = CategoricalCrossentropy()
@@ -282,6 +320,12 @@ for N_HEADS in N_HEADSS:
             #            loss = loss_function,
             #            metrics = metrics,)
             
+            # Define early stopping callback
+            early_stopping = EarlyStopping(monitor='val_loss', patience=30, verbose=1)
+
+            # Define custom callback to save the model with the lowest difference between training loss and validation loss
+            save_best_weights = SaveBestWeights(monitor='val_loss', verbose=1)
+
             start_time = time.time()
             history = vit.fit(np.array(X_train), 
                                      y_train, 
@@ -290,7 +334,7 @@ for N_HEADS in N_HEADSS:
                                      epochs = 100,      #Changed to 3 from 50 for testing purposes.
                                      validation_split = 0.5,
                                      shuffle = True,
-                                     callbacks=[early_stopping_callback]
+                                     callbacks=[save_best_weights]
                                  )
             end_time = time.time()
             time_spent = end_time - start_time
@@ -319,6 +363,11 @@ for N_HEADS in N_HEADSS:
             ax2.set_title('Loss')
             l2 = ax2.legend(loc="best")
             
+            training_accuracy = history.history['accuracy']
+            training_accuracy_list.append(training_accuracy)
+            validation_accuracy = history.history['val_accuracy']
+            validation_accuracy_list.append(validation_accuracy)
+            
             training_loss = history.history['loss']
             training_loss_list.append(training_loss)
             validation_loss = history.history['val_loss']
@@ -344,8 +393,39 @@ for N_HEADS in N_HEADSS:
             accuracy = correct_answer/total_sum
             accuracy_list.append(accuracy)
             
-            print("Accuracy: {:.2f}%".format(accuracy*100))
-       
+            print("HEADS"+str(N_HEADS)+"_"+"LAYERS"+str(N_LAYERS)+"_"+"MLP"+str(N_DENSE_UNITS)+"\n"+"Accuracy"+str(accuracy))
+
+            if accuracy < 0.85:
+                import smtplib
+                from email.mime.text import MIMEText
+                from email.mime.multipart import MIMEMultipart
+
+                # Sender's email address and password
+                sender_email = "limyudian@gmail.com"
+                password = "tdoa voka vatj biic"
+
+                # Receiver's email address
+                receiver_email = "limyudian@gmail.com"
+
+                # Create a message object
+                message = MIMEMultipart()
+                message["From"] = sender_email
+                message["To"] = receiver_email
+                message["Subject"] = "Test Email"
+
+                # Email body
+                body = "The accuracy of "+"HEADS"+str(N_HEADS)+"_"+"LAYERS"+str(N_LAYERS)+"_"+"MLP"+str(N_DENSE_UNITS)+"\n"+"is "+str(accuracy)
+                message.attach(MIMEText(body, "plain"))
+
+                # Connect to Gmail's SMTP server
+                with smtplib.SMTP("smtp.gmail.com", 587) as server:
+                    server.starttls()  # Secure the connection
+                    server.login(sender_email, password)
+                    text = message.as_string()
+                    server.sendmail(sender_email, receiver_email, text)
+                    print("Email sent successfully!")
+            
+            
             
             plt.figure(figsize=(6, 4))
             ax = sns.heatmap(conf_matrix, annot=True, fmt="d", cmap="Blues", 
@@ -382,10 +462,13 @@ df_results['num_head_list'] =num_head_list
 df_results['num_trans_list'] =num_trans_list
 df_results['mlp_size_list'] =mlp_size_list
 df_results['accuracy_list'] =accuracy_list
+df_results['training_accuracy_list'] =training_accuracy_list
+df_results['validation_accuracy_list'] =validation_accuracy_list
 df_results['training_loss_list'] =training_loss_list
 df_results['validation_loss_list'] =validation_loss_list
 df_results['time_list'] = time_list
 df_results['confusion_matrix_list'] = confusion_matrix_list
+df_results['parameter_list'] = parameter_list
 df_results.to_csv(image_directory+'trans_df_results.csv')
 
 sns.pairplot(df_results)
